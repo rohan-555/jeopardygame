@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeopardy! - Interactive Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        jeopardy: {
+                            blue: '#060ce9',
+                            darkblue: '#020253',
+                            gold: '#ffcc00',
+                            golddark: '#cda200',
+                            boardBg: '#000831',
+                            tileHover: '#181eef'
+                        }
+                    },
+                    fontFamily: {
+                        jeopardy: ['Impact', 'Arial Black', 'sans-serif'],
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at center, #0a1045 0%, #020224 100%);
+            min-height: 100vh;
+            color: white;
+            user-select: none;
+        }
+
+        .jeopardy-text-shadow {
+            text-shadow: 3px 3px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
+        }
+
+        .gold-text-shadow {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 204, 0, 0.5);
+        }
+
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .tile-card {
+            aspect-ratio: 7 / 4;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .tile-card:not(.disabled):hover {
+            transform: scale(1.03);
+            box-shadow: 0 0 20px rgba(255, 204, 0, 0.6);
+            border-color: #ffcc00;
+        }
+
+        /* Custom Scrollbar for Modal Content */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #020253;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ffcc00;
+            border-radius: 4px;
+        }
+
+        @keyframes pulse-gold {
+            0%, 100% { border-color: #ffcc00; box-shadow: 0 0 15px #ffcc00; }
+            50% { border-color: #ffffff; box-shadow: 0 0 25px #ffffff; }
+        }
+
+        .active-turn {
+            animation: pulse-gold 2s infinite;
+        }
+    </style>
+</head>
+<body class="p-2 sm:p-4 md:p-6 flex flex-col justify-between min-h-screen">
+
+    <!-- Top Header & Controls -->
+    <header class="max-w-7xl mx-auto w-full mb-4 flex flex-col sm:flex-row justify-between items-center gap-4 border-b border-blue-800/60 pb-3">
+        <div class="flex items-center gap-3">
+            <div class="bg-jeopardy-gold text-jeopardy-darkblue font-jeopardy px-4 py-1 text-3xl md:text-4xl rounded shadow-lg tracking-wider border-2 border-white uppercase italic">
+                JEOPARDY!
+            </div>
+            <span class="text-xs md:text-sm font-semibold tracking-widest text-blue-300 uppercase hidden sm:inline-block">Interactive Edition</span>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-4 flex-wrap justify-center">
+            <button id="soundToggleBtn" onclick="toggleSound()" class="bg-blue-900/80 hover:bg-blue-800 text-blue-200 px-3 py-1.5 rounded-lg border border-blue-600/50 text-sm font-medium flex items-center gap-2 transition">
+                <i id="soundIcon" class="fas fa-volume-up text-jeopardy-gold"></i>
+                <span id="soundText">Sound ON</span>
+            </button>
+            
+            <button onclick="confirmReset()" class="bg-red-900/70 hover:bg-red-800 text-red-200 px-3 py-1.5 rounded-lg border border-red-600/50 text-sm font-medium flex items-center gap-2 transition">
+                <i class="fas fa-rotate-right"></i> Reset Game
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Container -->
+    <main class="max-w-7xl mx-auto w-full flex-grow flex flex-col justify-center">
+        <!-- Jeopardy Board -->
+        <div class="bg-jeopardy-boardBg p-3 sm:p-5 rounded-2xl border-4 border-blue-900 shadow-2xl mb-6">
+            <div id="board" class="board-grid">
+                <!-- Categories and Tiles will be rendered dynamically via JS -->
+            </div>
+        </div>
+
+        <!-- 5-Team Scoreboard Matrix -->
+        <section class="bg-blue-950/80 backdrop-blur-md rounded-xl p-3 sm:p-4 border border-blue-800/80 shadow-xl">
+            <h2 class="text-xs font-bold text-blue-300 tracking-wider uppercase mb-3 text-center sm:text-left flex items-center justify-between">
+                <span><i class="fas fa-users text-jeopardy-gold mr-1.5"></i> Teams & Scoreboard</span>
+                <span class="text-[11px] font-normal text-blue-400">Click turn button (★) to set active team selector</span>
+            </h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3" id="scoreboardContainer">
+                <!-- 5 Team Cards inserted dynamically -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-6 text-center text-xs text-blue-400/70 py-2">
+        Interactive Jeopardy Board Game &bull; Created for Party & Event Hosting
+    </footer>
+
+    <!-- Question Modal Overlay -->
+    <div id="questionModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-3 sm:p-6 backdrop-blur-sm">
+        <div id="modalCard" class="bg-jeopardy-blue border-4 border-jeopardy-gold rounded-2xl w-full max-w-4xl p-4 sm:p-8 text-center flex flex-col justify-between shadow-2xl relative min-h-[80vh] md:min-h-[70vh]">
+            
+            <!-- Modal Header / Category + Points + Timer -->
+            <div class="flex justify-between items-center border-b-2 border-blue-400/40 pb-3 mb-4">
+                <div class="text-left">
+                    <span id="modalCategory" class="text-jeopardy-gold font-jeopardy tracking-widest text-lg sm:text-2xl uppercase block">CATEGORY</span>
+                    <span id="modalValue" class="text-white font-bold text-sm sm:text-base">POINTS: $200</span>
+                </div>
+
+                <!-- Timer Control Block -->
+                <div class="flex items-center gap-3">
+                    <div id="timerDisplay" class="bg-jeopardy-darkblue border-2 border-jeopardy-gold px-4 py-1.5 rounded-xl font-mono font-bold text-2xl sm:text-3xl text-jeopardy-gold">
+                        30
+                    </div>
+                    <button id="timerToggleBtn" onclick="toggleTimer()" class="bg-blue-900 hover:bg-blue-800 text-white p-2.5 rounded-xl border border-blue-500 text-sm transition">
+                        <i id="timerIcon" class="fas fa-pause"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Daily Double Banner (Hidden by default) -->
+            <div id="dailyDoubleBanner" class="hidden my-2 py-4 bg-gradient-to-r from-yellow-600 via-jeopardy-gold to-yellow-600 text-jeopardy-darkblue font-jeopardy text-3xl sm:text-5xl rounded-xl tracking-wider uppercase animate-bounce shadow-2xl border-2 border-white">
+                ★ DAILY DOUBLE! ★
+            </div>
+
+            <!-- Question & Answer Area -->
+            <div class="flex-grow flex flex-col items-center justify-center my-4 px-2 sm:px-6">
+                <!-- Question Text -->
+                <div id="modalQuestion" class="font-jeopardy text-2xl sm:text-4xl md:text-5xl text-white tracking-wide leading-tight jeopardy-text-shadow max-w-3xl mb-6">
+                    loading question...
+                </div>
+
+                <!-- Revealed Answer Container -->
+                <div id="modalAnswer" class="hidden w-full bg-jeopardy-darkblue/90 border-2 border-emerald-400 p-4 sm:p-5 rounded-xl text-emerald-300 font-bold text-xl sm:text-2xl md:text-3xl max-w-2xl animate-fade-in shadow-inner">
+                    <span class="text-xs uppercase text-emerald-500 tracking-widest block mb-1">Correct Answer:</span>
+                    <span id="modalAnswerText">Answer goes here</span>
+                </div>
+            </div>
+
+            <!-- Modal Action Buttons & Scoring Controls -->
+            <div class="space-y-4 pt-3 border-t border-blue-400/30">
+                <!-- Reveal Answer Button -->
+                <div class="flex justify-center">
+                    <button id="revealBtn" onclick="revealAnswer()" class="bg-jeopardy-gold hover:bg-jeopardy-golddark text-jeopardy-darkblue font-bold text-base sm:text-lg px-6 py-2.5 rounded-xl shadow-lg transition transform active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-eye"></i> Reveal Correct Answer
+                    </button>
+                </div>
+
+                <!-- Award Points to Team Section -->
+                <div>
+                    <p class="text-xs text-blue-200 uppercase font-semibold tracking-wider mb-2">Award / Penalize Points to Team:</p>
+                    <div id="modalTeamControls" class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                        <!-- Dynamic Team scoring buttons rendered on modal open -->
+                    </div>
+                </div>
+
+                <!-- Modal Close / Skip -->
+                <div class="flex justify-between items-center pt-2">
+                    <button onclick="closeModal(false)" class="text-xs text-blue-300 hover:text-white underline">
+                        Close without scoring tile
+                    </button>
+                    <button onclick="closeModal(true)" class="bg-blue-900/90 hover:bg-blue-800 text-white text-xs font-semibold px-4 py-2 rounded-lg border border-blue-500 transition">
+                        Mark Tile Completed & Close
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Custom Daily Double Wager Modal -->
+    <div id="wagerModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-jeopardy-darkblue border-4 border-jeopardy-gold p-6 sm:p-8 rounded-2xl max-w-md w-full text-center shadow-2xl">
+            <h3 class="font-jeopardy text-3xl sm:text-4xl text-jeopardy-gold mb-2 tracking-wide">DAILY DOUBLE</h3>
+            <p class="text-sm text-blue-200 mb-4">Enter wager amount for team <span id="wagerTeamName" class="font-bold text-white"></span></p>
+
+            <div class="mb-4">
+                <label class="block text-xs text-blue-300 mb-1">Maximum Wager: $<span id="wagerMaxAmount">1000</span></label>
+                <input type="number" id="wagerInput" min="5" value="500" class="w-full bg-blue-950 border-2 border-jeopardy-gold text-white text-2xl font-bold rounded-xl px-4 py-2 text-center focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+
+            <button onclick="confirmWager()" class="w-full bg-jeopardy-gold hover:bg-jeopardy-golddark text-jeopardy-darkblue font-bold text-lg py-3 rounded-xl transition shadow-lg">
+                Confirm Wager & See Question
+            </button>
+        </div>
+    </div>
+
+    <!-- Game End Winner Modal -->
+    <div id="winnerModal" class="fixed inset-0 bg-black/95 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gradient-to-b from-jeopardy-blue to-jeopardy-darkblue border-4 border-jeopardy-gold p-8 rounded-2xl max-w-xl w-full text-center shadow-2xl">
+            <i class="fas fa-trophy text-6xl text-jeopardy-gold mb-4 animate-bounce"></i>
+            <h2 class="font-jeopardy text-4xl sm:text-5xl text-white tracking-wider mb-2">GAME OVER!</h2>
+            <p class="text-xl text-jeopardy-gold font-bold mb-6" id="winnerAnnouncement">Team X Wins!</p>
+            
+            <div id="finalStandings" class="bg-blue-950/80 p-4 rounded-xl border border-blue-700/60 mb-6 text-left space-y-2">
+                <!-- Final team rankings -->
+            </div>
+
+            <div class="flex gap-4 justify-center">
+                <button onclick="restartGame()" class="bg-jeopardy-gold hover:bg-jeopardy-golddark text-jeopardy-darkblue font-bold px-6 py-3 rounded-xl text-lg shadow-lg transition">
+                    Play Again
+                </button>
+                <button onclick="document.getElementById('winnerModal').classList.add('hidden')" class="bg-blue-900 hover:bg-blue-800 text-white font-semibold px-5 py-3 rounded-xl text-sm transition">
+                    Inspect Board
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Game Logic -->
+    <script>
+        // Game State
+        const GAME_STATE_KEY = 'jeopardy_game_state_v1';
+        let soundEnabled = true;
+
+        // Audio Context Synthesizer for SFX
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playSFX(type) {
+            if (!soundEnabled) return;
+            initAudio();
+            if (!audioCtx) return;
+
+            try {
+                const now = audioCtx.currentTime;
+                if (type === 'click') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'correct') {
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                        gain.gain.setValueAtTime(0.2, now + idx * 0.08);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.25);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + idx * 0.08);
+                        osc.stop(now + idx * 0.08 + 0.25);
+                    });
+                } else if (type === 'wrong') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(160, now);
+                    osc.frequency.linearRampToValueAtTime(90, now + 0.3);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } else if (type === 'dailyDouble') {
+                    [300, 400, 500, 700, 900].forEach((freq, idx) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'square';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                        gain.gain.setValueAtTime(0.15, now + idx * 0.1);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.18);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + idx * 0.1);
+                        osc.stop(now + idx * 0.1 + 0.18);
+                    });
+                } else if (type === 'timeUp') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.setValueAtTime(180, now + 0.15);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                }
+            } catch(e) {
+                console.warn('Audio playback error:', e);
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            document.getElementById('soundText').innerText = soundEnabled ? 'Sound ON' : 'Sound OFF';
+            document.getElementById('soundIcon').className = soundEnabled ? 'fas fa-volume-up text-jeopardy-gold' : 'fas fa-volume-mute text-gray-400';
+        }
+
+        // Comprehensive Trivia Dataset
+        const jeopardyData = [
+            {
+                category: "History",
+                questions: [
+                    { value: 200, q: "In 1912, this infamous ocean liner struck an iceberg and sank on its maiden voyage.", a: "The Titanic" },
+                    { value: 400, q: "This ancient Egyptian queen was the last active ruler of the Ptolemaic Kingdom.", a: "Cleopatra" },
+                    { value: 600, q: "The historic tearing down of this barrier wall in November 1989 symbolized the end of the Cold War.", a: "The Berlin Wall" },
+                    { value: 800, q: "This French military commander crowned himself Emperor of the French in 1804.", a: "Napoleon Bonaparte" },
+                    { value: 1000, q: "Signed in 1215, this famous English document limited the power of the king and established legal rights.", a: "Magna Carta" }
+                ]
+            },
+            {
+                category: "Geography",
+                questions: [
+                    { value: 200, q: "What is the capital city of Australia?", a: "Canberra" },
+                    { value: 400, q: "Which river is widely recognized as the longest river in South America?", a: "The Amazon River" },
+                    { value: 600, q: "Mount Kilimanjaro, the highest peak in Africa, is located in which country?", a: "Tanzania" },
+                    { value: 800, q: "Which European nation is bordered by Spain to the east and the Atlantic Ocean to the west?", a: "Portugal" },
+                    { value: 1000, q: "What is the smallest independent country in the world by both area and population?", a: "Vatican City" }
+                ]
+            },
+            {
+                category: "Bollywood",
+                questions: [
+                    { value: 200, q: "Who is widely celebrated as the 'King of Bollywood' or 'SRK'?", a: "Shah Rukh Khan" },
+                    { value: 400, q: "Which iconic 1995 romantic drama starring Shah Rukh Khan and Kajol ran in Mumbai theaters for over 25 years?", a: "Dilwale Dulhania Le Jayenge (DDLJ)" },
+                    { value: 600, q: "Which 2001 epic sports film nominated for an Academy Award featured Aamir Khan playing cricket against British officers?", a: "Lagaan" },
+                    { value: 800, q: "Who composed the Oscar-winning song 'Jai Ho' from Slummod Millionaire and 'Naatu Naatu' co-composer legacy?", a: "A. R. Rahman" },
+                    { value: 1000, q: "What was the title of India's first full-length silent feature film released in 1913 by Dadasaheb Phalke?", a: "Raja Harishchandra" }
+                ]
+            },
+            {
+                category: "Songs",
+                questions: [
+                    { value: 200, q: "Which pop icon sang 'Thriller', 'Billie Jean', and 'Beat It'?", a: "Michael Jackson" },
+                    { value: 400, q: "According to Queen's 1975 classic song, 'Mama, just killed a man... put a gun against his head, pulled my trigger, now he's...' what?", a: "Dead" },
+                    { value: 600, q: "Which female artist released the smash-hit singles 'Shape of You' era co-track and 'Rolling in the Deep'?", a: "Adele" },
+                    { value: 800, q: "Which British rock band recorded the famous album 'The Dark Side of the Moon'?", a: "Pink Floyd" },
+                    { value: 1000, q: "What legendary 1969 music festival was advertised as '3 Days of Peace & Music' in upstate New York?", a: "Woodstock" }
+                ]
+            },
+            {
+                category: "Hollywood",
+                questions: [
+                    { value: 200, q: "Who played the character of Tony Stark / Iron Man in the Marvel Cinematic Universe?", a: "Robert Downey Jr." },
+                    { value: 400, q: "Which visionary director made 'Jurassic Park', 'E.T.', and 'Jaws'?", a: "Steven Spielberg" },
+                    { value: 600, q: "Which movie won the Best Picture Oscar at the 2024 Academy Awards, directed by Christopher Nolan?", a: "Oppenheimer" },
+                    { value: 800, q: "What fictional metal flows through the nation of Wakanda in Marvel's Black Panther?", a: "Vibranium" },
+                    { value: 1000, q: "Which actor holds the record for playing James Bond in the highest number of official Eon Production films (7 films)?", a: "Roger Moore" }
+                ]
+            }
+        ];
+
+        // App Game Data Dynamic Structure
+        let teams = [
+            { id: 1, name: "Team 1", score: 0 },
+            { id: 2, name: "Team 2", score: 0 },
+            { id: 3, name: "Team 3", score: 0 },
+            { id: 4, name: "Team 4", score: 0 },
+            { id: 5, name: "Team 5", score: 0 }
+        ];
+
+        let activeTeamId = 1;
+        let completedTiles = []; // array of "catIndex-qIndex"
+        let dailyDoubleCoords = { cat: 0, q: 0 };
+        
+        // Modal state variables
+        let currentQuestionObj = null;
+        let currentCatIndex = null;
+        let currentQIndex = null;
+        let activeWager = 0;
+        let isDailyDouble = false;
+        
+        // Timer
+        let timerInterval = null;
+        let timerSeconds = 30;
+        let isTimerRunning = false;
+
+        // Initialize Board
+        function initGame() {
+            // Randomly select Daily Double tile
+            dailyDoubleCoords = {
+                cat: Math.floor(Math.random() * 5),
+                q: Math.floor(Math.random() * 4) + 1 // exclude $200 row usually, or anywhere $400-$1000
+            };
+
+            renderBoard();
+            renderScoreboard();
+        }
+
+        // Render Jeopardy Grid
+        function renderBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+
+            // Render Category Headers
+            jeopardyData.forEach(cat => {
+                const header = document.createElement('div');
+                header.className = "bg-jeopardy-darkblue border-2 border-blue-500/80 rounded-xl p-2 sm:p-3 text-center flex items-center justify-center min-h-[50px] sm:min-h-[70px] shadow-md";
+                header.innerHTML = `<h3 class="font-jeopardy text-sm sm:text-xl md:text-2xl text-jeopardy-gold tracking-wider uppercase leading-tight jeopardy-text-shadow">${cat.category}</h3>`;
+                boardEl.appendChild(header);
+            });
+
+            // Render Tiles Row by Row (5 rows: $200, $400, $600, $800, $1000)
+            for (let qIdx = 0; qIdx < 5; qIdx++) {
+                for (let cIdx = 0; cIdx < 5; cIdx++) {
+                    const qData = jeopardyData[cIdx].questions[qIdx];
+                    const tileKey = `${cIdx}-${qIdx}`;
+                    const isCompleted = completedTiles.includes(tileKey);
+
+                    const tile = document.createElement('button');
+                    tile.className = `tile-card border-2 rounded-xl flex items-center justify-center font-jeopardy text-xl sm:text-3xl md:text-4xl tracking-wider transition cursor-pointer select-none ${
+                        isCompleted 
+                            ? 'bg-blue-950/40 border-blue-900/40 text-blue-800/40 cursor-not-allowed disabled' 
+                            : 'bg-jeopardy-blue border-blue-400 text-jeopardy-gold hover:text-white'
+                    }`;
+
+                    if (isCompleted) {
+                        tile.disabled = true;
+                        tile.innerHTML = `<span class="text-blue-900/50">&bull;</span>`;
+                    } else {
+                        tile.innerHTML = `<span class="gold-text-shadow">$${qData.value}</span>`;
+                        tile.onclick = () => handleTileClick(cIdx, qIdx);
+                    }
+
+                    boardEl.appendChild(tile);
+                }
+            }
+
+            checkGameOver();
+        }
+
+        // Render 5 Team Cards
+        function renderScoreboard() {
+            const container = document.getElementById('scoreboardContainer');
+            container.innerHTML = '';
+
+            teams.forEach(team => {
+                const isActive = team.id === activeTeamId;
+                const card = document.createElement('div');
+                card.className = `bg-jeopardy-darkblue/90 border-2 ${isActive ? 'active-turn border-jeopardy-gold' : 'border-blue-800/80'} rounded-xl p-3 flex flex-col justify-between transition shadow-lg relative`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-1 mb-2">
+                        <!-- Editable Team Name -->
+                        <input type="text" value="${escapeHtml(team.name)}" 
+                            onchange="updateTeamName(${team.id}, this.value)"
+                            class="bg-transparent font-bold text-sm sm:text-base text-white border-b border-dashed border-blue-400/50 focus:border-jeopardy-gold focus:outline-none w-full mr-1">
+                        
+                        <!-- Set Turn Indicator Button -->
+                        <button onclick="setActiveTeam(${team.id})" title="Set as active picking team"
+                            class="text-xs px-2 py-1 rounded ${isActive ? 'bg-jeopardy-gold text-jeopardy-darkblue font-bold' : 'bg-blue-900/80 text-blue-300 hover:bg-blue-800'} transition">
+                            <i class="fas fa-star text-xs"></i>
+                        </button>
+                    </div>
+
+                    <!-- Score Display -->
+                    <div class="text-center my-1">
+                        <div class="font-mono font-extrabold text-2xl sm:text-3xl ${team.score < 0 ? 'text-red-400' : 'text-jeopardy-gold'}">
+                            $${team.score}
+                        </div>
+                    </div>
+
+                    <!-- Manual Adjustments -->
+                    <div class="flex justify-between items-center gap-1 mt-2 pt-2 border-t border-blue-900/80">
+                        <button onclick="adjustScore(${team.id}, -100)" class="text-[11px] bg-red-950/60 hover:bg-red-900 text-red-300 px-2 py-0.5 rounded border border-red-800/60 transition">-100</button>
+                        <button onclick="adjustScore(${team.id}, 100)" class="text-[11px] bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800/60 transition">+100</button>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function updateTeamName(teamId, newName) {
+            const team = teams.find(t => t.id === teamId);
+            if (team && newName.trim()) {
+                team.name = newName.trim();
+                renderScoreboard();
+            }
+        }
+
+        function setActiveTeam(teamId) {
+            activeTeamId = teamId;
+            playSFX('click');
+            renderScoreboard();
+        }
+
+        function adjustScore(teamId, delta) {
+            const team = teams.find(t => t.id === teamId);
+            if (team) {
+                team.score += delta;
+                playSFX('click');
+                renderScoreboard();
+            }
+        }
+
+        // Handle Clicking Tile
+        function handleTileClick(catIdx, qIdx) {
+            currentCatIndex = catIdx;
+            currentQIndex = qIdx;
+            currentQuestionObj = jeopardyData[catIdx].questions[qIdx];
+            
+            // Check Daily Double
+            if (dailyDoubleCoords.cat === catIdx && dailyDoubleCoords.q === qIdx) {
+                isDailyDouble = true;
+                openWagerModal();
+            } else {
+                isDailyDouble = false;
+                activeWager = currentQuestionObj.value;
+                openQuestionModal();
+            }
+        }
+
+        // Daily Double Wager Modal
+        function openWagerModal() {
+            playSFX('dailyDouble');
+            const activeTeam = teams.find(t => t.id === activeTeamId) || teams[0];
+            document.getElementById('wagerTeamName').innerText = activeTeam.name;
+            
+            // Daily Double max wager is higher of team current score or highest tile value ($1000)
+            const maxWager = Math.max(1000, activeTeam.score);
+            document.getElementById('wagerMaxAmount').innerText = maxWager;
+            
+            const wagerInput = document.getElementById('wagerInput');
+            wagerInput.max = maxWager;
+            wagerInput.value = Math.min(currentQuestionObj.value * 2, maxWager);
+
+            document.getElementById('wagerModal').classList.remove('hidden');
+        }
+
+        function confirmWager() {
+            const input = document.getElementById('wagerInput');
+            let val = parseInt(input.value) || 200;
+            const activeTeam = teams.find(t => t.id === activeTeamId) || teams[0];
+            const maxWager = Math.max(1000, activeTeam.score);
+
+            if (val < 5) val = 5;
+            if (val > maxWager) val = maxWager;
+
+            activeWager = val;
+            document.getElementById('wagerModal').classList.add('hidden');
+            openQuestionModal();
+        }
+
+        // Display Question Modal
+        function openQuestionModal() {
+            playSFX('click');
+            
+            const catName = jeopardyData[currentCatIndex].category;
+            document.getElementById('modalCategory').innerText = catName;
+            document.getElementById('modalValue').innerText = isDailyDouble ? `DAILY DOUBLE WAGER: $${activeWager}` : `POINTS: $${activeWager}`;
+            
+            document.getElementById('modalQuestion').innerText = currentQuestionObj.q;
+            document.getElementById('modalAnswerText').innerText = currentQuestionObj.a;
+
+            // Hide answer by default
+            document.getElementById('modalAnswer').classList.add('hidden');
+            document.getElementById('revealBtn').classList.remove('hidden');
+
+            // Daily double banner toggle
+            const ddBanner = document.getElementById('dailyDoubleBanner');
+            if (isDailyDouble) {
+                ddBanner.classList.remove('hidden');
+            } else {
+                ddBanner.classList.add('hidden');
+            }
+
+            // Render Team scoring buttons in modal
+            renderModalTeamControls();
+
+            // Reset and start countdown timer (30s)
+            resetTimer(30);
+            startTimer();
+
+            document.getElementById('questionModal').classList.remove('hidden');
+        }
+
+        function renderModalTeamControls() {
+            const container = document.getElementById('modalTeamControls');
+            container.innerHTML = '';
+
+            teams.forEach(team => {
+                const isActive = team.id === activeTeamId;
+                const wrapper = document.createElement('div');
+                wrapper.className = `bg-blue-950/80 p-2 rounded-xl border ${isActive ? 'border-jeopardy-gold' : 'border-blue-700/50'} flex flex-col gap-1 text-center`;
+
+                wrapper.innerHTML = `
+                    <div class="text-xs font-bold text-white truncate mb-1" title="${escapeHtml(team.name)}">${escapeHtml(team.name)}</div>
+                    <div class="grid grid-cols-2 gap-1">
+                        <button onclick="scoreTeam(${team.id}, true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1 px-2 rounded text-xs transition flex items-center justify-center gap-1">
+                            <i class="fas fa-plus"></i> +$${activeWager}
+                        </button>
+                        <button onclick="scoreTeam(${team.id}, false)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2 rounded text-xs transition flex items-center justify-center gap-1">
+                            <i class="fas fa-minus"></i> -$${activeWager}
+                        </button>
+                    </div>
+                `;
+
+                container.appendChild(wrapper);
+            });
+        }
+
+        function revealAnswer() {
+            playSFX('click');
+            document.getElementById('modalAnswer').classList.remove('hidden');
+            document.getElementById('revealBtn').classList.add('hidden');
+            stopTimer();
+        }
+
+        function scoreTeam(teamId, isCorrect) {
+            const team = teams.find(t => t.id === teamId);
+            if (!team) return;
+
+            if (isCorrect) {
+                team.score += activeWager;
+                playSFX('correct');
+                // Active turn moves to team that got it right
+                activeTeamId = teamId;
+            } else {
+                team.score -= activeWager;
+                playSFX('wrong');
+            }
+
+            renderScoreboard();
+            renderModalTeamControls();
+        }
+
+        function closeModal(markCompleted = true) {
+            stopTimer();
+            if (markCompleted && currentCatIndex !== null && currentQIndex !== null) {
+                const tileKey = `${currentCatIndex}-${currentQIndex}`;
+                if (!completedTiles.includes(tileKey)) {
+                    completedTiles.push(tileKey);
+                }
+            }
+
+            document.getElementById('questionModal').classList.add('hidden');
+            renderBoard();
+        }
+
+        // Timer Controls
+        function resetTimer(seconds = 30) {
+            stopTimer();
+            timerSeconds = seconds;
+            updateTimerDisplay();
+        }
+
+        function startTimer() {
+            if (isTimerRunning) return;
+            isTimerRunning = true;
+            document.getElementById('timerIcon').className = 'fas fa-pause';
+
+            timerInterval = setInterval(() => {
+                timerSeconds--;
+                updateTimerDisplay();
+
+                if (timerSeconds <= 0) {
+                    stopTimer();
+                    playSFX('timeUp');
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            isTimerRunning = false;
+            clearInterval(timerInterval);
+            document.getElementById('timerIcon').className = 'fas fa-play';
+        }
+
+        function toggleTimer() {
+            if (isTimerRunning) {
+                stopTimer();
+            } else {
+                if (timerSeconds <= 0) timerSeconds = 30;
+                startTimer();
+            }
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById('timerDisplay');
+            display.innerText = timerSeconds;
+
+            if (timerSeconds <= 5) {
+                display.classList.add('text-red-500', 'animate-pulse');
+                display.classList.remove('text-jeopardy-gold');
+            } else {
+                display.classList.remove('text-red-500', 'animate-pulse');
+                display.classList.add('text-jeopardy-gold');
+            }
+        }
+
+        // Game Over & Reset
+        function checkGameOver() {
+            if (completedTiles.length >= 25) {
+                setTimeout(() => {
+                    showWinnerModal();
+                }, 500);
+            }
+        }
+
+        function showWinnerModal() {
+            // Sort teams by score descending
+            const sorted = [...teams].sort((a, b) => b.score - a.score);
+            const winner = sorted[0];
+
+            document.getElementById('winnerAnnouncement').innerText = `${winner.name} Wins with $${winner.score}!`;
+
+            const standingsContainer = document.getElementById('finalStandings');
+            standingsContainer.innerHTML = sorted.map((t, index) => `
+                <div class="flex justify-between items-center text-sm ${index === 0 ? 'text-jeopardy-gold font-bold text-base' : 'text-blue-200'}">
+                    <span>#${index + 1} ${escapeHtml(t.name)}</span>
+                    <span class="font-mono font-bold">$${t.score}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('winnerModal').classList.remove('hidden');
+
+            // Trigger Confetti
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+
+        function confirmReset() {
+            if (confirm("Are you sure you want to reset the game board and all scores?")) {
+                restartGame();
+            }
+        }
+
+        function restartGame() {
+            teams.forEach((t, i) => {
+                t.score = 0;
+            });
+            completedTiles = [];
+            activeTeamId = 1;
+            
+            document.getElementById('winnerModal').classList.add('hidden');
+            document.getElementById('questionModal').classList.add('hidden');
+            
+            initGame();
+        }
+
+        // Utility Helper
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initialize on Load
+        window.onload = function() {
+            initGame();
+        };
+    </script>
+</body>
+</html>
